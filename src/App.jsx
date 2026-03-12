@@ -86,6 +86,11 @@ function Field({label,children,hint}){return <div><label style={{display:"block"
 function KPI({label,value,sub,trend,color,icon}){return <div className="kpi" style={{borderTop:`3px solid ${color}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}><div style={{fontSize:10,color:C.muted,fontWeight:600,letterSpacing:".06em",textTransform:"uppercase"}}>{label}</div><span style={{fontSize:18}}>{icon}</span></div><div className="sf" style={{fontSize:26,color:C.navy,lineHeight:1}}>{value}</div>{(sub||trend!==undefined)&&<div style={{display:"flex",alignItems:"center",gap:6,marginTop:8}}>{trend!==undefined&&<span style={{fontSize:11,fontWeight:700,color:trend>=0?C.green:C.red}}>{trend>=0?"▲":"▼"} {fmt(Math.abs(trend))}</span>}<span style={{fontSize:11,color:C.muted}}>{sub}</span></div>}</div>;}
 function Empty({icon,title,desc,action}){return <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"60px 40px",textAlign:"center",gap:14}}><div style={{fontSize:44}}>{icon}</div><div className="sf" style={{fontSize:22,color:C.navy}}>{title}</div><div style={{fontSize:14,color:C.muted,maxWidth:340,lineHeight:1.6}}>{desc}</div>{action}</div>;}
 
+function normalizeImport(d){
+  if(d.tauxCad&&!d.taux){const taux={};Object.entries(d.tauxCad).forEach(([m,v])=>{taux[m]={CAD:v};});d={...d,taux};}
+  return {profils:[],comptes:[],entries:{},taux:{},...d,objectif:d.objectif||{montant:0,date:""}};
+}
+
 function Onboarding({onStart,onImport}){
   const [step,setStep]=useState(0);
   const ref=useRef();
@@ -105,7 +110,7 @@ function Onboarding({onStart,onImport}){
         <button className="bp" style={{width:"100%",fontSize:15,padding:"14px"}} onClick={onStart}>✨ Démarrer de zéro</button>
         <div style={{textAlign:"center",fontSize:12,color:C.muted}}>— ou —</div>
         <button className="bg" style={{width:"100%",fontSize:15,padding:"14px"}} onClick={()=>ref.current.click()}>📂 Importer un money.json</button>
-        <input ref={ref} type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{onImport(JSON.parse(ev.target.result));}catch{alert("Fichier invalide");}};r.readAsText(f);}} />
+        <input ref={ref} type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{onImport(normalizeImport(JSON.parse(ev.target.result)));}catch(err){alert("Fichier invalide : "+err.message);}};r.readAsText(f);}} />
         <div style={{fontSize:11,color:C.muted,textAlign:"center",marginTop:4,lineHeight:1.5}}>Le JSON est ta sauvegarde — télécharge-le après chaque saisie.</div>
       </div>
     }
@@ -133,6 +138,10 @@ function Sidebar({tab,setTab,data,setData}){
     {t&&data.profils.length>0&&<div style={{margin:"10px 0",background:C.navyLight,borderRadius:12,padding:"12px 14px"}}><div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:5}}>{ML(lastM)}</div><div className="sf" style={{fontSize:19,color:C.white}}>{fmt(t.grandHC)}</div>{t.crypto>0&&<div style={{fontSize:11,color:C.cyan,marginTop:2}}>+ {fmt(t.crypto)} crypto</div>}</div>}
     <div style={{marginTop:"auto",borderTop:`1px solid ${C.navyLight}`,paddingTop:14,display:"flex",flexDirection:"column",gap:8}}>
       <button className="bp" style={{width:"100%",fontSize:13,padding:"9px"}} onClick={()=>{const b=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="money.json";a.click();}}>⬇️ Exporter JSON</button>
+      <label style={{width:"100%",fontSize:13,padding:"9px",background:C.navyLight,color:C.white,border:`1px solid ${C.navyLight}`,borderRadius:8,textAlign:"center",cursor:"pointer",display:"block"}}>
+        📂 Importer JSON
+        <input type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=normalizeImport(JSON.parse(ev.target.result));setData(d);e.target.value="";}catch{alert("Fichier invalide");}};r.readAsText(f);}} />
+      </label>
     </div>
   </div>;
 }
