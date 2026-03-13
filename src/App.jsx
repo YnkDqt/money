@@ -1,17 +1,19 @@
 import { useState, useMemo, useRef, useEffect } from "react";
-import { AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, ReferenceLine } from "recharts";
 
-const C={navy:"#0a1628",navyMid:"#0f2040",navyLight:"#162d52",blue:"#1e6fff",blueLight:"#4d8fff",bluePale:"#e8f0fe",blueFrost:"#f0f5ff",cyan:"#00c8e0",white:"#ffffff",sand:"#f4f7fc",sandDark:"#e8edf5",text:"#0a1628",muted:"#5a7099",border:"#d6e0f0",green:"#00b87a",greenPale:"#e0f7f0",red:"#e8365d",redPale:"#fde8ee",yellow:"#f5a623",gold:"#c9a84c"};
+const C={navy:"#0a1628",navyMid:"#0f2040",navyLight:"#162d52",blue:"#1e6fff",blueLight:"#4d8fff",bluePale:"#e8f0fe",blueFrost:"#f0f5ff",cyan:"#00c8e0",white:"#ffffff",sand:"#f4f7fc",sandDark:"#e8edf5",text:"#0a1628",muted:"#5a7099",border:"#d6e0f0",green:"#00b87a",greenPale:"#e0f7f0",red:"#e8365d",redPale:"#fde8ee",yellow:"#f5a623",gold:"#c9a84c",purple:"#8b5cf6",orange:"#f97316"};
 const CATS=["Cash","Épargne","Bourse","Immobilier","Crowdfunding","Crypto"];
-const CAT_COLOR={Cash:C.blue,Épargne:C.cyan,Bourse:C.gold,Immobilier:C.green,Crowdfunding:"#8b5cf6",Crypto:C.yellow};
+const CAT_COLOR={Cash:C.blue,Épargne:C.cyan,Bourse:C.gold,Immobilier:C.green,Crowdfunding:C.purple,Crypto:C.yellow};
 const PROFIL_COLORS=["#1e6fff","#00c8e0","#c9a84c","#e8365d","#00b87a","#8b5cf6","#f97316","#ec4899"];
 const DEVISES=["EUR","CAD","USD","GBP","CHF"];
+const BUDGET_CATS=["Logement","Alimentation","Transport","Santé","Loisirs","Abonnements","Épargne prog.","Autre"];
+const BUDGET_CAT_COLOR={Logement:C.blue,Alimentation:C.green,Transport:C.gold,Santé:C.cyan,"Loisirs":C.purple,"Abonnements":C.orange,"Épargne prog.":C.navy,"Autre":C.muted};
 const ML=k=>{if(!k)return"";const[y,mo]=k.split("-");const M=["Jan","Fév","Mar","Avr","Mai","Jun","Juil","Aoû","Sep","Oct","Nov","Déc"];return`${M[parseInt(mo)-1]} ${y.slice(2)}`;};
 const fmt=n=>new Intl.NumberFormat("fr-FR",{style:"currency",currency:"EUR",maximumFractionDigits:0}).format(n||0);
 const fmtR=n=>new Intl.NumberFormat("fr-FR",{maximumFractionDigits:2}).format(n||0);
 const fmtP=n=>`${n>=0?"+":""}${(n||0).toFixed(1)}%`;
 const eur=(c,v,t)=>c.devise!=="EUR"?(v||0)*(t?.[c.devise]||1):(v||0);
-const EMPTY={profils:[],comptes:[],entries:{},taux:{},objectif:{montant:0,date:""}};
+const EMPTY={profils:[],comptes:[],entries:{},taux:{},objectif:{montant:0,date:""},budget:{profils:{},mois:{}}};
 const DEMO={
   profils:[{id:"yd",nom:"YD",couleur:"#1e6fff"},{id:"mc",nom:"MC",couleur:"#00c8e0"}],
   comptes:[
@@ -31,18 +33,38 @@ const DEMO={
     "2026-03":{c1:20114,c2:408,c3:23160,c4:15317,c5:7491,c6:2048,c7:9842,c8:500,c9:6220,c10:7420,c11:4169,c12:22990,c13:15311,c14:7420,c15:5},
   },
   taux:{"2025-12":{CAD:0.617},"2026-01":{CAD:0.620},"2026-02":{CAD:0.617},"2026-03":{CAD:0.635}},
-  objectif:{montant:250000,date:"2028-06-01"}
+  objectif:{montant:250000,date:"2028-06-01"},
+  budget:{
+    profils:{
+      yd:{salaire:3400,revenus_autres:40},
+      mc:{salaire:2500,revenus_autres:5}
+    },
+    lignes:[
+      {id:"b1",nom:"Loyer",cat:"Logement",yd:800,mc:600},
+      {id:"b2",nom:"Nourriture",cat:"Alimentation",yd:300,mc:300},
+      {id:"b3",nom:"Électricité",cat:"Logement",yd:9,mc:9},
+      {id:"b4",nom:"Internet",cat:"Abonnements",yd:12,mc:12},
+      {id:"b5",nom:"Mobile",cat:"Abonnements",yd:5,mc:6},
+      {id:"b6",nom:"Mutuelle",cat:"Santé",yd:78,mc:48},
+      {id:"b7",nom:"Assurance auto",cat:"Transport",yd:21,mc:21},
+      {id:"b8",nom:"Essence",cat:"Transport",yd:50,mc:50},
+      {id:"b9",nom:"Sport",cat:"Loisirs",yd:30,mc:0},
+      {id:"b10",nom:"Netflix",cat:"Abonnements",yd:7.5,mc:7.5},
+      {id:"b11",nom:"Spotify",cat:"Abonnements",yd:9,mc:9},
+    ],
+    mois:{}
+  }
 };
 
 function mtotals(data,mk){const e=data.entries[mk]||{},t=data.taux[mk]||{};const byP={};data.profils.forEach(p=>{byP[p.id]=0;});const byCat={};let crypto=0,grand=0;data.comptes.forEach(c=>{const v=eur(c,e[c.id],t);if(byP[c.profilId]!==undefined)byP[c.profilId]+=v;byCat[c.cat]=(byCat[c.cat]||0)+v;if(c.cat==="Crypto")crypto+=v;grand+=v;});return{byP,byCat,crypto,grand,grandHC:grand-crypto};}
-function evoSeries(data){return Object.keys(data.entries).sort().map(m=>{const t=mtotals(data,m);const r={m:ML(m),total:Math.round(t.grandHC),crypto:Math.round(t.crypto)};data.profils.forEach(p=>{r[p.id]=Math.round(t.byP[p.id]||0);});return r;});}
+function evoSeries(data){return Object.keys(data.entries).sort().map(m=>{const t=mtotals(data,m);const r={m:ML(m),total:Math.round(t.grandHC),crypto:Math.round(t.crypto)};data.profils.forEach(p=>{r[p.id]=Math.round(t.byP[p.id]||0);});CATS.forEach(cat=>{r[cat]=Math.round(t.byCat[cat]||0);});return r;});}
 
 const G=`
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@300;400;500;600;700&display=swap');
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Outfit',sans-serif;background:#f4f7fc;color:#0a1628;}
 .sf{font-family:'DM Serif Display',serif;}
-input,select{font-family:'Outfit',sans-serif;}
+input,select,textarea{font-family:'Outfit',sans-serif;}
 ::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-thumb{background:#4d8fff;border-radius:2px;}
 .card{background:white;border:1.5px solid #d6e0f0;border-radius:16px;padding:24px;}
 .kpi{background:white;border:1.5px solid #d6e0f0;border-radius:14px;padding:20px;transition:all .18s;}
@@ -76,6 +98,9 @@ input,select{font-family:'Outfit',sans-serif;}
 .pfill{height:100%;border-radius:3px;background:linear-gradient(90deg,#1e6fff,#00c8e0);transition:width .4s;}
 .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
 .ptab{border-radius:12px;padding:9px 20px;cursor:pointer;transition:all .18s;border:2px solid;font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;}
+.seg{display:flex;background:#e8edf5;border-radius:13px;padding:4px;gap:2px;}
+.segtab{padding:7px 16px;border-radius:9px;border:none;cursor:pointer;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;background:transparent;color:#5a7099;transition:all .15s;}
+.segtab.on{background:white;color:#0a1628;box-shadow:0 2px 8px rgba(0,0,0,.08);}
 `;
 
 function Modal({title,onClose,children,width=520}){
@@ -88,7 +113,8 @@ function Empty({icon,title,desc,action}){return <div style={{display:"flex",flex
 
 function normalizeImport(d){
   if(d.tauxCad&&!d.taux){const taux={};Object.entries(d.tauxCad).forEach(([m,v])=>{taux[m]={CAD:v};});d={...d,taux};}
-  return {profils:[],comptes:[],entries:{},taux:{},...d,objectif:d.objectif||{montant:0,date:""}};
+  if(!d.budget)d={...d,budget:{profils:{},lignes:[],mois:{}}};
+  return {profils:[],comptes:[],entries:{},taux:{},objectif:{montant:0,date:""},budget:{profils:{},lignes:[],mois:{}},...d};
 }
 
 function Onboarding({onStart,onImport}){
@@ -97,7 +123,7 @@ function Onboarding({onStart,onImport}){
   const steps=[
     {icon:"🏦",title:"Bienvenue sur Money",desc:"Suis l'évolution de ton patrimoine mois par mois — seul ou à plusieurs.",
       body:<div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {[["📊","Graphiques","Visualise l'évolution, répartition et rentabilité"],["✏️","Données","Saisis tes soldes chaque début de mois"],["⚙️","Paramétrage","Configure tes profils, comptes et objectifs"]].map(([ic,t,d])=>(
+        {[["📊","Tableau de bord","Graphiques, tendances et objectif"],["💰","Budget","Suivi des dépenses et revenus mensuels"],["✏️","Données","Saisis tes soldes chaque début de mois"],["⚙️","Paramétrage","Configure tes profils, comptes et objectifs"]].map(([ic,t,d])=>(
           <div key={t} style={{display:"flex",gap:14,alignItems:"flex-start",background:C.blueFrost,borderRadius:12,padding:"13px 16px"}}>
             <span style={{fontSize:20,flexShrink:0}}>{ic}</span>
             <div><div style={{fontWeight:600,color:C.navy,fontSize:14,marginBottom:2}}>{t}</div><div style={{fontSize:13,color:C.muted}}>{d}</div></div>
@@ -134,7 +160,7 @@ function Sidebar({tab,setTab,data,setData}){
       <div className="sf" style={{fontSize:21,color:C.white,letterSpacing:"-.02em"}}>Mo<span style={{color:C.cyan}}>ney</span></div>
       <div style={{fontSize:10,color:C.muted,marginTop:2,letterSpacing:".1em",textTransform:"uppercase"}}>Wealth tracker</div>
     </div>
-    {[["graphique","📊","Graphiques"],["donnees","✏️","Données"],["parametrage","⚙️","Paramétrage"]].map(([id,ic,l])=><div key={id} className={`si${tab===id?" act":""}`} onClick={()=>setTab(id)}><span style={{fontSize:15}}>{ic}</span>{l}</div>)}
+    {[["dashboard","📊","Tableau de bord"],["budget","💰","Budget"],["donnees","✏️","Données"],["parametrage","⚙️","Paramétrage"]].map(([id,ic,l])=><div key={id} className={`si${tab===id?" act":""}`} onClick={()=>setTab(id)}><span style={{fontSize:15}}>{ic}</span>{l}</div>)}
     {t&&data.profils.length>0&&<div style={{margin:"10px 0",background:C.navyLight,borderRadius:12,padding:"12px 14px"}}><div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:5}}>{ML(lastM)}</div><div className="sf" style={{fontSize:19,color:C.white}}>{fmt(t.grandHC)}</div>{t.crypto>0&&<div style={{fontSize:11,color:C.cyan,marginTop:2}}>+ {fmt(t.crypto)} crypto</div>}</div>}
     <div style={{marginTop:"auto",borderTop:`1px solid ${C.navyLight}`,paddingTop:14,display:"flex",flexDirection:"column",gap:8}}>
       <button className="bp" style={{width:"100%",fontSize:13,padding:"9px"}} onClick={()=>{const b=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="money.json";a.click();}}>⬇️ Exporter JSON</button>
@@ -145,6 +171,701 @@ function Sidebar({tab,setTab,data,setData}){
     </div>
   </div>;
 }
+
+// ===================== TABLEAU DE BORD =====================
+
+function DashboardTab({data,setTab}){
+  const [vue,setVue]=useState("collective");
+  const [selP,setSelP]=useState(null);
+  const months=Object.keys(data.entries).sort();
+  const lastM=months[months.length-1];
+  const series=useMemo(()=>evoSeries(data),[data]);
+  useEffect(()=>{if(data.profils.length>0&&!selP)setSelP(data.profils[0].id);},[data.profils]);
+  if(data.profils.length===0||months.length===0)return <div className="anim" style={{padding:"32px 36px"}}><Empty icon="📊" title="Pas encore de données" desc="Configure tes profils et saisis tes premiers soldes." action={<button className="bp" onClick={()=>setTab("parametrage")}>Aller au Paramétrage →</button>}/></div>;
+
+  const t=mtotals(data,lastM);
+  const prevM=months[months.length-2];
+  const tp=prevM?mtotals(data,prevM):null;
+  const firstM=months[0];
+  const tf=mtotals(data,firstM);
+  const growthTotal=tf.grandHC>0?(t.grandHC-tf.grandHC)/tf.grandHC*100:0;
+
+  // Objectif
+  const pct=data.objectif?.montant>0?Math.min(100,t.grandHC/data.objectif.montant*100):0;
+  const daysLeft=data.objectif?.date?(Math.max(0,Math.ceil((new Date(data.objectif.date)-new Date())/86400000))):null;
+  const monthsLeft=daysLeft?Math.round(daysLeft/30):null;
+  const neededPerMonth=monthsLeft>0?(data.objectif.montant-t.grandHC)/monthsLeft:null;
+
+  // Waterfall mensuel (deltas)
+  const deltasSeries=months.slice(1).map((m,i)=>{
+    const prev=months[i];const cur=mtotals(data,m).grandHC;const prv=mtotals(data,prev).grandHC;
+    return{m:ML(m),delta:Math.round(cur-prv),positive:cur>=prv};
+  });
+
+  // Comparatif profils (barres)
+  const profilSeries=series.map(r=>{const obj={m:r.m};data.profils.forEach(p=>{obj[p.id]=r[p.id]||0;});return obj;});
+
+  // Catégories sur dernier mois
+  const catData=Object.entries(t.byCat).filter(([,v])=>v>0).map(([cat,val])=>({name:cat,value:Math.round(val),color:CAT_COLOR[cat]||C.muted})).sort((a,b)=>b.value-a.value);
+
+  // Performance par compte (top 5 gagnants/perdants)
+  const eL=data.entries[lastM]||{},tL=data.taux?.[lastM]||{};
+  const eP=prevM?(data.entries[prevM]||{}):null;
+  const comptePerfs=eP?data.comptes.map(c=>{
+    const cur=eur(c,eL[c.id],tL);const prev=eur(c,eP[c.id],tL);const delta=cur-prev;
+    return{nom:c.nom,delta,pct:prev>0?delta/prev*100:0,profil:data.profils.find(p=>p.id===c.profilId)};
+  }).filter(c=>c.delta!==0).sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta)).slice(0,6):[];
+
+  // Vue individuelle
+  const pA=data.profils.find(p=>p.id===selP);
+  const csA=pA?data.comptes.filter(c=>c.profilId===selP):[];
+  const totA=csA.reduce((s,c)=>s+eur(c,eL[c.id],tL),0);
+  const prevTotA=prevM?csA.reduce((s,c)=>s+eur(c,(data.entries[prevM]||{})[c.id],tL),0):null;
+  const initA=csA.reduce((s,c)=>s+eur(c,c.valInit,tL),0);
+  const perfA=initA>0?(totA-initA)/initA*100:0;
+  const byCatA={};csA.forEach(c=>{const v=eur(c,eL[c.id],tL);byCatA[c.cat]=(byCatA[c.cat]||0)+v;});
+  const repA=Object.entries(byCatA).filter(([,v])=>v>0).map(([cat,val])=>({name:cat,value:Math.round(val),color:CAT_COLOR[cat]||C.muted}));
+  const pSeries=series.map(r=>({m:r.m,total:r[selP]||0}));
+  // Catégories stacked per profil
+  const stackedCatSeries=series.map(r=>{const obj={m:r.m};CATS.forEach(cat=>{obj[cat]=r[cat]||0;});return obj;});
+
+  const Seg=({options,value,onChange})=><div className="seg">{options.map(([v,l])=><button key={v} className={`segtab${value===v?" on":""}`} onClick={()=>onChange(v)}>{l}</button>)}</div>;
+
+  return <div className="anim" style={{padding:"28px 32px",maxWidth:1200}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}>
+      <div>
+        <div className="sf" style={{fontSize:32,color:C.navy}}>Tableau de bord</div>
+        <div style={{fontSize:14,color:C.muted,marginTop:4}}>{ML(lastM)} · {data.profils.map(p=>p.nom).join(" + ")}</div>
+      </div>
+      <Seg options={[["collective","🌐 Collectif"],["individuelle","👤 Individuel"]]} value={vue} onChange={setVue}/>
+    </div>
+
+    {vue==="collective"&&<>
+      {/* KPIs */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:13,marginBottom:20}}>
+        <KPI label="Patrimoine hors crypto" value={fmt(t.grandHC)} sub="vs mois préc." trend={tp?t.grandHC-tp.grandHC:undefined} color={C.blue} icon="🏦"/>
+        <KPI label="Total avec crypto" value={fmt(t.grand)} sub={`Crypto : ${fmt(t.crypto)}`} trend={tp?t.grand-tp.grand:undefined} color={C.yellow} icon="₿"/>
+        <KPI label={`Croissance (${ML(firstM)}→)`} value={fmtP(growthTotal)} sub={`+${fmt(t.grandHC-tf.grandHC)}`} color={growthTotal>=0?C.green:C.red} icon="📈"/>
+        {data.objectif?.montant>0&&<KPI label="Objectif patrimonial" value={`${pct.toFixed(1)}%`} sub={fmt(data.objectif.montant)} color={C.purple} icon="🎯"/>}
+        {data.profils.map(p=><KPI key={p.id} label={p.nom} value={fmt(t.byP[p.id]||0)} trend={tp?((t.byP[p.id]||0)-(tp.byP[p.id]||0)):undefined} color={p.couleur} icon="👤"/>)}
+      </div>
+
+      {/* Objectif Progress */}
+      {data.objectif?.montant>0&&<div className="card" style={{marginBottom:16,background:`linear-gradient(135deg,${C.navy} 0%,${C.navyLight} 100%)`,border:"none"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div>
+            <div className="sf" style={{fontSize:18,color:C.white}}>Objectif {fmt(data.objectif.montant)}</div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,.6)",marginTop:2}}>{data.objectif.date?`Visé pour ${new Date(data.objectif.date).toLocaleDateString("fr-FR",{month:"long",year:"numeric"})}`:"Date non définie"}{monthsLeft&&` · ${monthsLeft} mois restants`}</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div className="sf" style={{fontSize:28,color:C.cyan}}>{pct.toFixed(1)}%</div>
+            {neededPerMonth&&<div style={{fontSize:12,color:"rgba(255,255,255,.5)"}}>{fmt(neededPerMonth)}/mois nécessaires</div>}
+          </div>
+        </div>
+        <div style={{height:10,background:"rgba(255,255,255,.15)",borderRadius:5,overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${C.cyan},${C.blue})`,borderRadius:5,transition:"width .6s"}}/>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",marginTop:8}}>
+          <span style={{fontSize:11,color:"rgba(255,255,255,.5)"}}>0 €</span>
+          <span style={{fontSize:12,color:C.cyan,fontWeight:600}}>{fmt(t.grandHC)} atteints</span>
+          <span style={{fontSize:11,color:"rgba(255,255,255,.5)"}}>{fmt(data.objectif.montant)}</span>
+        </div>
+      </div>}
+
+      {/* Évolution + Donut */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 260px",gap:14,marginBottom:14}}>
+        <div className="card">
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div className="sf" style={{fontSize:17,color:C.navy}}>Évolution consolidée</div>
+          </div>
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={series}>
+              <defs>
+                <linearGradient id="gT" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={C.blue} stopOpacity={.18}/><stop offset="95%" stopColor={C.blue} stopOpacity={0}/></linearGradient>
+                <linearGradient id="gC" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={C.yellow} stopOpacity={.22}/><stop offset="95%" stopColor={C.yellow} stopOpacity={0}/></linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false}/>
+              <XAxis dataKey="m" tick={{fontSize:10,fill:C.muted}} axisLine={false} tickLine={false}/>
+              <YAxis tick={{fontSize:10,fill:C.muted}} axisLine={false} tickLine={false} tickFormatter={v=>`${Math.round(v/1000)}k`} width={34}/>
+              <Tooltip formatter={v=>fmt(v)} contentStyle={{borderRadius:10,border:`1px solid ${C.border}`,fontFamily:"Outfit,sans-serif",fontSize:12}}/>
+              <Area type="monotone" dataKey="total" stroke={C.blue} strokeWidth={2.5} fill="url(#gT)" name="Hors crypto"/>
+              <Area type="monotone" dataKey="crypto" stroke={C.yellow} strokeWidth={2} fill="url(#gC)" name="Crypto"/>
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="card" style={{display:"flex",flexDirection:"column"}}>
+          <div className="sf" style={{fontSize:17,color:C.navy,marginBottom:10}}>Répartition {ML(lastM)}</div>
+          <ResponsiveContainer width="100%" height={120}>
+            <PieChart>
+              <Pie data={catData} cx="50%" cy="50%" innerRadius={36} outerRadius={54} dataKey="value" strokeWidth={2} stroke="white">
+                {catData.map((e,i)=><Cell key={i} fill={e.color}/>)}
+              </Pie>
+              <Tooltip formatter={v=>fmt(v)} contentStyle={{borderRadius:10,fontFamily:"Outfit,sans-serif",fontSize:11}}/>
+            </PieChart>
+          </ResponsiveContainer>
+          <div style={{display:"flex",flexDirection:"column",gap:5,marginTop:6}}>
+            {catData.map((d,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}><div className="dot" style={{background:d.color}}/><span style={{fontSize:11,color:C.muted}}>{d.name}</span></div>
+              <span style={{fontSize:11,fontWeight:600,color:C.navy}}>{fmt(d.value)}</span>
+            </div>)}
+          </div>
+        </div>
+      </div>
+
+      {/* Comparatif profils + Delta mensuel */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+        <div className="card">
+          <div className="sf" style={{fontSize:17,color:C.navy,marginBottom:14}}>Comparatif profils</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={profilSeries} barGap={4}>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false}/>
+              <XAxis dataKey="m" tick={{fontSize:10,fill:C.muted}} axisLine={false} tickLine={false}/>
+              <YAxis tick={{fontSize:10,fill:C.muted}} axisLine={false} tickLine={false} tickFormatter={v=>`${Math.round(v/1000)}k`} width={34}/>
+              <Tooltip formatter={v=>fmt(v)} contentStyle={{borderRadius:10,fontFamily:"Outfit,sans-serif",fontSize:12}}/>
+              {data.profils.map(p=><Bar key={p.id} dataKey={p.id} name={p.nom} fill={p.couleur} radius={[4,4,0,0]}/>)}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="card">
+          <div className="sf" style={{fontSize:17,color:C.navy,marginBottom:14}}>Delta mensuel</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={deltasSeries}>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false}/>
+              <XAxis dataKey="m" tick={{fontSize:10,fill:C.muted}} axisLine={false} tickLine={false}/>
+              <YAxis tick={{fontSize:10,fill:C.muted}} axisLine={false} tickLine={false} tickFormatter={v=>`${v>0?"+":""}${Math.round(v/1000)}k`} width={40}/>
+              <Tooltip formatter={v=>`${v>=0?"+":""}${fmt(v)}`} contentStyle={{borderRadius:10,fontFamily:"Outfit,sans-serif",fontSize:12}}/>
+              <ReferenceLine y={0} stroke={C.border} strokeWidth={1.5}/>
+              <Bar dataKey="delta" name="Variation" radius={[4,4,0,0]}>
+                {deltasSeries.map((d,i)=><Cell key={i} fill={d.positive?C.green:C.red}/>)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Répartition par catégorie empilée + mouvements */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+        <div className="card">
+          <div className="sf" style={{fontSize:17,color:C.navy,marginBottom:14}}>Composition du patrimoine</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={stackedCatSeries}>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false}/>
+              <XAxis dataKey="m" tick={{fontSize:10,fill:C.muted}} axisLine={false} tickLine={false}/>
+              <YAxis tick={{fontSize:10,fill:C.muted}} axisLine={false} tickLine={false} tickFormatter={v=>`${Math.round(v/1000)}k`} width={34}/>
+              <Tooltip formatter={v=>fmt(v)} contentStyle={{borderRadius:10,fontFamily:"Outfit,sans-serif",fontSize:12}}/>
+              {CATS.filter(cat=>t.byCat[cat]>0).map(cat=><Bar key={cat} dataKey={cat} name={cat} fill={CAT_COLOR[cat]} stackId="a" radius={[0,0,0,0]}/>)}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="card">
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div className="sf" style={{fontSize:17,color:C.navy}}>Mouvements {ML(lastM)}</div>
+            {prevM&&<span style={{fontSize:11,color:C.muted}}>vs {ML(prevM)}</span>}
+          </div>
+          {comptePerfs.length===0?<div style={{color:C.muted,fontSize:13,textAlign:"center",padding:16}}>Aucune variation ce mois</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {comptePerfs.map((c,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",borderRadius:9,background:C.sand}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  {c.profil&&<div style={{width:6,height:24,borderRadius:3,background:c.profil.couleur,flexShrink:0}}/>}
+                  <div><div style={{fontSize:13,fontWeight:600,color:C.navy}}>{c.nom}</div><div style={{fontSize:11,color:C.muted}}>{c.profil?.nom}</div></div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:13,fontWeight:700,color:c.delta>=0?C.green:C.red}}>{c.delta>=0?"+":""}{fmt(c.delta)}</div>
+                  <div style={{fontSize:11,color:C.muted}}>{fmtP(c.pct)}</div>
+                </div>
+              </div>)}
+            </div>}
+        </div>
+      </div>
+
+      {/* Radar budgétaire */}
+      {(()=>{
+        const budget=data.budget||{};
+        const {rev:revTotal,dep:depFixed,epargne:epargneTheo}=budgetEpargneTheo(budget,data.profils);
+        if(!epargneTheo||!prevM)return null;
+        const deltaPatriCurr=Math.round((t.grandHC)-(tp?.grandHC||0));
+        const varsThisM=totalVars(budget,lastM);
+        const horsB=epargneTheo-varsThisM-deltaPatriCurr;
+        const horsBAbs=Math.abs(horsB);
+        const ok=horsB<=200;
+        return <div className="card" style={{marginTop:0,background:ok?`linear-gradient(135deg,${C.greenPale},white)`:`linear-gradient(135deg,${C.redPale},white)`,border:`1.5px solid ${ok?C.green:C.red}30`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
+            <div>
+              <div className="sf" style={{fontSize:17,color:C.navy}}>Radar budgétaire — {ML(lastM)}</div>
+              <div style={{fontSize:12,color:C.muted,marginTop:2}}>Épargne attendue vs variation patrimoniale réelle</div>
+            </div>
+            <div style={{padding:"6px 14px",borderRadius:20,background:ok?C.green:C.red,color:"white",fontSize:12,fontWeight:700}}>{ok?"✓ Dans les clous":"⚠ Écart détecté"}</div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:14}}>
+            {[
+              ["Épargne théo.",epargneTheo,C.blue,"Revenus − fixes"],
+              ["Variables",varsThisM,C.orange,"Saisis ce mois"],
+              ["Δ Patrimoine",deltaPatriCurr,deltaPatriCurr>=0?C.green:C.red,"Variation réelle HC"],
+              ["Hors budget",horsBAbs,ok?C.green:C.red,horsB>200?"Dépenses non tracées":horsB<-200?"Recette exceptionnelle":"Cohérent"],
+            ].map(([l,v,col,sub])=>(
+              <div key={l} style={{background:"white",borderRadius:10,padding:"10px 14px",border:`1px solid ${C.border}`}}>
+                <div style={{fontSize:10,color:C.muted,fontWeight:600,textTransform:"uppercase",marginBottom:4}}>{l}</div>
+                <div className="sf" style={{fontSize:20,color:col}}>{fmt(v)}</div>
+                <div style={{fontSize:11,color:C.muted,marginTop:2}}>{sub}</div>
+              </div>
+            ))}
+          </div>
+          {!ok&&<div style={{fontSize:13,color:horsB>0?C.red:C.green,fontWeight:600,padding:"8px 12px",background:"white",borderRadius:8,border:`1px solid ${C.border}`}}>
+            {horsB>200
+              ?`${fmt(horsB)} dépensés hors budget ce mois — non tracés dans les variables.`
+              :`${fmt(horsBAbs)} de revenus exceptionnels ou recette non anticipée.`}
+          </div>}
+        </div>;
+      })()}
+    </>}
+
+    {vue==="individuelle"&&<>
+      <div style={{marginBottom:20}}>
+        <div style={{fontSize:11,color:C.muted,fontWeight:600,marginBottom:9,textTransform:"uppercase",letterSpacing:".05em"}}>Sélectionner une personne</div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>{data.profils.map(p=><button key={p.id} className="ptab" onClick={()=>setSelP(p.id)} style={{borderColor:selP===p.id?p.couleur:C.border,background:selP===p.id?p.couleur:"white",color:selP===p.id?"white":C.muted,boxShadow:selP===p.id?`0 4px 14px ${p.couleur}40`:"none",fontSize:14,padding:"11px 26px"}}>{p.nom}</button>)}</div>
+      </div>
+      {pA&&<>
+        <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:18,padding:"18px 22px",background:`linear-gradient(135deg,${pA.couleur}18,${pA.couleur}05)`,borderRadius:16,border:`1.5px solid ${pA.couleur}30`}}>
+          <div style={{width:50,height:50,borderRadius:"50%",background:pA.couleur,display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontWeight:700,fontSize:17,flexShrink:0}}>{pA.nom.substring(0,2).toUpperCase()}</div>
+          <div>
+            <div className="sf" style={{fontSize:22,color:C.navy}}>{pA.nom}</div>
+            <div style={{fontSize:13,color:C.muted}}>{csA.length} comptes · {ML(lastM)}</div>
+          </div>
+          <div style={{marginLeft:"auto",textAlign:"right"}}>
+            <div className="sf" style={{fontSize:28,color:C.navy}}>{fmt(totA)}</div>
+            {prevTotA!==null&&<div style={{fontSize:13,fontWeight:700,color:totA>=prevTotA?C.green:C.red}}>{totA>=prevTotA?"▲":"▼"} {fmt(Math.abs(totA-prevTotA))} vs M-1</div>}
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12,marginBottom:16}}>
+          <KPI label="Patrimoine" value={fmt(totA)} sub="vs mois préc." trend={prevTotA!==null?totA-prevTotA:undefined} color={pA.couleur} icon="🏦"/>
+          <KPI label="Performance" value={fmtP(perfA)} sub={`sur ${fmt(initA)}`} trend={totA-initA} color={perfA>=0?C.green:C.red} icon="📈"/>
+          <KPI label="Crypto" value={fmt(csA.filter(c=>c.cat==="Crypto").reduce((s,c)=>s+eur(c,eL[c.id],tL),0))} color={C.yellow} icon="₿"/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 260px",gap:14,marginBottom:14}}>
+          <div className="card">
+            <div className="sf" style={{fontSize:17,color:C.navy,marginBottom:12}}>Évolution de {pA.nom}</div>
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={pSeries}>
+                <defs><linearGradient id="gP" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={pA.couleur} stopOpacity={.2}/><stop offset="95%" stopColor={pA.couleur} stopOpacity={0}/></linearGradient></defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false}/>
+                <XAxis dataKey="m" tick={{fontSize:10,fill:C.muted}} axisLine={false} tickLine={false}/>
+                <YAxis tick={{fontSize:10,fill:C.muted}} axisLine={false} tickLine={false} tickFormatter={v=>`${Math.round(v/1000)}k`} width={34}/>
+                <Tooltip formatter={v=>fmt(v)} contentStyle={{borderRadius:10,fontFamily:"Outfit,sans-serif",fontSize:12}}/>
+                <Area type="monotone" dataKey="total" stroke={pA.couleur} strokeWidth={2.5} fill="url(#gP)" name={pA.nom}/>
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="card" style={{display:"flex",flexDirection:"column"}}>
+            <div className="sf" style={{fontSize:17,color:C.navy,marginBottom:10}}>Répartition</div>
+            <ResponsiveContainer width="100%" height={115}>
+              <PieChart>
+                <Pie data={repA} cx="50%" cy="50%" innerRadius={33} outerRadius={50} dataKey="value" strokeWidth={2} stroke="white">
+                  {repA.map((e,i)=><Cell key={i} fill={e.color}/>)}
+                </Pie>
+                <Tooltip formatter={v=>fmt(v)} contentStyle={{borderRadius:10,fontFamily:"Outfit,sans-serif",fontSize:11}}/>
+              </PieChart>
+            </ResponsiveContainer>
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+              {repA.map((d,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}><div className="dot" style={{background:d.color}}/><span style={{fontSize:11,color:C.muted}}>{d.name}</span></div>
+                <span style={{fontSize:11,fontWeight:600,color:C.navy}}>{fmt(d.value)}</span>
+              </div>)}
+            </div>
+          </div>
+        </div>
+        {/* Breakdown comptes individuel */}
+        <div className="card">
+          <div className="sf" style={{fontSize:17,color:C.navy,marginBottom:14}}>Détail des comptes</div>
+          <div style={{display:"flex",flexDirection:"column",gap:7}}>
+            {CATS.filter(cat=>csA.some(c=>c.cat===cat)).map(cat=>(
+              <div key={cat}>
+                <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:5}}><div className="dot" style={{width:9,height:9,background:CAT_COLOR[cat]}}/><span style={{fontSize:11,fontWeight:700,color:CAT_COLOR[cat],textTransform:"uppercase",letterSpacing:".05em"}}>{cat}</span></div>
+                {csA.filter(c=>c.cat===cat).map(c=>{
+                  const cur=eur(c,eL[c.id],tL);const prev=eP?eur(c,eP[c.id],tL):null;const delta=prev!==null?cur-prev:null;const initE=eur(c,c.valInit,tL);const roi=initE>0?(cur-initE)/initE*100:null;
+                  return <div key={c.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",borderRadius:9,background:C.sand,marginBottom:3}}>
+                    <div><div style={{fontSize:13,fontWeight:600,color:C.navy}}>{c.nom}</div>{c.devise!=="EUR"&&<span style={{fontSize:11,color:C.muted}}>{fmtR(eL[c.id]||0)} {c.devise}</span>}</div>
+                    <div style={{display:"flex",gap:16,alignItems:"center"}}>
+                      {delta!==null&&delta!==0&&<span style={{fontSize:12,fontWeight:700,color:delta>=0?C.green:C.red}}>{delta>=0?"+":""}{fmt(delta)}</span>}
+                      {roi!==null&&<span className="badge" style={{background:roi>=0?C.greenPale:C.redPale,color:roi>=0?C.green:C.red,fontSize:11}}>{fmtP(roi)}</span>}
+                      <span style={{fontSize:14,fontWeight:700,color:C.navy,minWidth:80,textAlign:"right"}}>{fmt(cur)}</span>
+                    </div>
+                  </div>;
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      </>}
+    </>}
+  </div>;
+}
+
+// ===================== BUDGET =====================
+
+// Helper: épargne théorique mensuelle (revenus - fixes)
+const budgetEpargneTheo=(budget,profils)=>{
+  const lignes=budget?.lignes||[];
+  const bProfils=budget?.profils||{};
+  const rev=profils.reduce((s,p)=>{const bp=bProfils[p.id]||{};return s+(bp.salaire||0)+(bp.revenus_autres||0);},0);
+  const dep=profils.reduce((s,p)=>s+lignes.reduce((ss,l)=>ss+(l[p.id]||0),0),0);
+  return{rev,dep,epargne:rev-dep};
+};
+
+// Helper: variables d'un mois = [{id,nom,cat,montant}]
+const getVars=(budget,mois)=>(budget?.mois?.[mois]?.vars||[]);
+const totalVars=(budget,mois)=>getVars(budget,mois).reduce((s,v)=>s+(v.montant||0),0);
+
+function BudgetTab({data,setData}){
+  const budget=data.budget||{profils:{},lignes:[],mois:{}};
+  const [mode,setMode]=useState("mensuel");
+  const [editLigne,setEditLigne]=useState(null);
+  const [formLigne,setFormLigne]=useState({});
+  const [editRev,setEditRev]=useState(null);
+  const [formRev,setFormRev]=useState({});
+  const [formVar,setFormVar]=useState({nom:"",cat:"Loisirs",montant:""});
+  const months=Object.keys(data.entries).sort();
+  const lastM=months[months.length-1]||"";
+  const [selM,setSelM]=useState(lastM);
+
+  const lignes=budget.lignes||[];
+  const bProfils=budget.profils||{};
+  const {rev:revTotal,dep:depFixed,epargne:epargneTheo}=budgetEpargneTheo(budget,data.profils);
+  const revByP=(pId)=>{const bp=bProfils[pId]||{};return(bp.salaire||0)+(bp.revenus_autres||0);};
+  const depByP=(pId)=>lignes.reduce((s,l)=>s+(l[pId]||0),0);
+
+  // Variables du mois sélectionné
+  const vars=getVars(budget,selM);
+  const varsTotal=totalVars(budget,selM);
+  const depTotale=depFixed+varsTotal;
+  const epargneReelle=revTotal-depTotale;
+
+  // Catégories fixes
+  const catStats=BUDGET_CATS.map(cat=>{
+    const v=lignes.filter(l=>l.cat===cat).reduce((s,l)=>s+data.profils.reduce((ss,p)=>ss+(l[p.id]||0),0),0);
+    return{cat,v};
+  }).filter(c=>c.v>0);
+
+  // Historique mensuel pour analyse
+  const histSeries=months.map(m=>{
+    const vt=totalVars(budget,m);
+    const {rev,dep}=budgetEpargneTheo(budget,data.profils);
+    // variation patrimoniale réelle ce mois
+    const mi=months.indexOf(m);
+    let deltaPatri=null;
+    if(mi>0){
+      const prev=months[mi-1];
+      const tCur=mtotals(data,m);const tPrev=mtotals(data,prev);
+      deltaPatri=Math.round(tCur.grandHC-tPrev.grandHC);
+    }
+    const epTheo=Math.round(rev-dep);
+    const epReelle=Math.round(rev-dep-vt);
+    const ecart=deltaPatri!==null?deltaPatri-epTheo:null;
+    return{m:ML(m),epTheo,epReelle,deltaPatri,ecart,vt:Math.round(vt)};
+  });
+
+  const pctColor=(p)=>p>100?C.red:p>80?C.yellow:C.green;
+  const PBar=({pct,color})=><div style={{height:5,background:C.sandDark,borderRadius:3,overflow:"hidden",marginTop:5}}>
+    <div style={{height:"100%",width:`${Math.min(100,pct)}%`,background:color,borderRadius:3,transition:"width .4s"}}/>
+  </div>;
+
+  const saveLigne=()=>{
+    if(!formLigne.nom?.trim())return;
+    const newL={id:formLigne.id||"bl_"+Date.now(),nom:formLigne.nom.trim(),cat:formLigne.cat||"Logement"};
+    data.profils.forEach(p=>{newL[p.id]=parseFloat(formLigne[p.id])||0;});
+    if(formLigne.id){setData(d=>({...d,budget:{...d.budget,lignes:(d.budget.lignes||[]).map(l=>l.id===formLigne.id?newL:l)}}));}
+    else{setData(d=>({...d,budget:{...d.budget,lignes:[...(d.budget.lignes||[]),newL]}}));}
+    setEditLigne(null);
+  };
+  const delLigne=(id)=>{if(!confirm("Supprimer ?"))return;setData(d=>({...d,budget:{...d.budget,lignes:(d.budget.lignes||[]).filter(l=>l.id!==id)}}));};
+  const saveRev=()=>{
+    const pId=formRev.pId;if(!pId)return;
+    setData(d=>({...d,budget:{...d.budget,profils:{...d.budget.profils,[pId]:{salaire:parseFloat(formRev.salaire)||0,revenus_autres:parseFloat(formRev.revenus_autres)||0}}}}));
+    setEditRev(null);
+  };
+  const addVar=()=>{
+    if(!formVar.nom?.trim()||!parseFloat(formVar.montant))return;
+    const v={id:"v_"+Date.now(),nom:formVar.nom.trim(),cat:formVar.cat||"Loisirs",montant:parseFloat(formVar.montant)};
+    setData(d=>{const moisEntry=d.budget?.mois?.[selM]||{};return{...d,budget:{...d.budget,mois:{...d.budget.mois,[selM]:{...moisEntry,vars:[...(moisEntry.vars||[]),v]}}}};});
+    setFormVar({nom:"",cat:"Loisirs",montant:""});
+  };
+  const delVar=(vid)=>{
+    setData(d=>{const moisEntry=d.budget?.mois?.[selM]||{};return{...d,budget:{...d.budget,mois:{...d.budget.mois,[selM]:{...moisEntry,vars:(moisEntry.vars||[]).filter(v=>v.id!==vid)}}}};});
+  };
+
+  return <div className="anim" style={{padding:"28px 32px",maxWidth:1200}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}>
+      <div>
+        <div className="sf" style={{fontSize:32,color:C.navy}}>Budget</div>
+        <div style={{fontSize:14,color:C.muted,marginTop:4}}>Charges fixes · Variables ponctuelles · Épargne réelle</div>
+      </div>
+      <div className="seg">
+        {[["mensuel","📅 Mensuel"],["plan","📋 Plan"],["analyse","📊 Analyse"]].map(([v,l])=><button key={v} className={`segtab${mode===v?" on":""}`} onClick={()=>setMode(v)}>{l}</button>)}
+      </div>
+    </div>
+
+    {/* KPIs globaux */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:13,marginBottom:20}}>
+      <KPI label="Revenus totaux" value={fmt(revTotal)} sub={data.profils.map(p=>`${p.nom}: ${fmt(revByP(p.id))}`).join(" · ")} color={C.green} icon="💵"/>
+      <KPI label="Charges fixes" value={fmt(depFixed)} sub={`${revTotal>0?(depFixed/revTotal*100).toFixed(0):0}% des revenus`} color={C.blue} icon="🏠"/>
+      <KPI label="Épargne théorique" value={fmt(epargneTheo)} sub="Sans variables" color={epargneTheo>=0?C.cyan:C.red} icon="🏦"/>
+      {varsTotal>0&&<KPI label={`Variables ${ML(selM)}`} value={fmt(varsTotal)} sub={`Épargne réelle: ${fmt(epargneReelle)}`} color={C.orange} icon="🛒"/>}
+    </div>
+
+    {/* ===== MODE MENSUEL ===== */}
+    {mode==="mensuel"&&<>
+      <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:18}}>
+        <select className="inp" style={{width:"auto"}} value={selM} onChange={e=>setSelM(e.target.value)}>
+          {[...months].reverse().map(m=><option key={m} value={m}>{ML(m)}</option>)}
+        </select>
+      </div>
+
+      {/* Profils revenus */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:12,marginBottom:18}}>
+        {data.profils.map(p=>{const bp=bProfils[p.id]||{};const dep=depByP(p.id);const rev=revByP(p.id);const r=rev-dep;return(
+          <div key={p.id} style={{background:`linear-gradient(135deg,${p.couleur}15,${p.couleur}05)`,border:`1.5px solid ${p.couleur}30`,borderRadius:14,padding:"16px 18px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+              <div style={{width:34,height:34,borderRadius:"50%",background:p.couleur,display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontWeight:700,fontSize:12}}>{p.nom.substring(0,2).toUpperCase()}</div>
+              <div style={{fontWeight:600,color:C.navy,fontSize:15}}>{p.nom}</div>
+              <button className="bsm" style={{marginLeft:"auto"}} onClick={()=>{setFormRev({pId:p.id,...(bProfils[p.id]||{})});setEditRev(true);}}>✏️</button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+              {[["Salaire",bp.salaire||0,C.green],["Autres",bp.revenus_autres||0,C.cyan],["Reste",r,r>=0?C.blue:C.red]].map(([l,v,col])=>(
+                <div key={l}><div style={{fontSize:10,color:C.muted,fontWeight:600,textTransform:"uppercase",marginBottom:2}}>{l}</div><div className="sf" style={{fontSize:15,color:col}}>{fmt(v)}</div></div>
+              ))}
+            </div>
+          </div>);
+        })}
+      </div>
+
+      {/* Charges fixes — lecture seule */}
+      <div style={{marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:13,fontWeight:700,color:C.navy}}>Charges fixes</span>
+        <span className="badge bb" style={{fontSize:11}}>Récurrentes chaque mois</span>
+      </div>
+      {BUDGET_CATS.filter(cat=>lignes.some(l=>l.cat===cat)).map(cat=>{
+        const catLignes=lignes.filter(l=>l.cat===cat);
+        const catTotal=catLignes.reduce((s,l)=>s+data.profils.reduce((ss,p)=>ss+(l[p.id]||0),0),0);
+        return <div key={cat} style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:14,marginBottom:8,overflow:"hidden"}}>
+          <div style={{padding:"9px 18px",background:`${BUDGET_CAT_COLOR[cat]}10`,borderBottom:`1px solid ${BUDGET_CAT_COLOR[cat]}20`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}><div className="dot" style={{width:9,height:9,background:BUDGET_CAT_COLOR[cat]}}/><span style={{fontWeight:700,fontSize:12,color:BUDGET_CAT_COLOR[cat]}}>{cat}</span></div>
+            <span style={{fontSize:12,fontWeight:700,color:C.navy}}>{fmt(catTotal)}/mois</span>
+          </div>
+          <div style={{padding:"8px 18px",display:"flex",flexWrap:"wrap",gap:6}}>
+            {catLignes.map(l=>{const tot=data.profils.reduce((s,p)=>s+(l[p.id]||0),0);return(
+              <div key={l.id} style={{display:"flex",alignItems:"center",gap:8,background:C.sand,borderRadius:8,padding:"6px 12px"}}>
+                <span style={{fontSize:13,color:C.navy}}>{l.nom}</span>
+                <span style={{fontSize:13,fontWeight:700,color:C.blue}}>{fmt(tot)}</span>
+              </div>);
+            })}
+          </div>
+        </div>;
+      })}
+
+      {/* Variables ponctuelles */}
+      <div style={{marginTop:20,marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:13,fontWeight:700,color:C.navy}}>Dépenses variables</span>
+        <span className="badge" style={{background:C.orange+"22",color:C.orange,fontSize:11}}>{ML(selM)}</span>
+      </div>
+      <div className="card" style={{marginBottom:10}}>
+        {/* Saisie rapide */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto",gap:10,alignItems:"end",marginBottom:vars.length>0?14:0}}>
+          <Field label="Description"><input className="inp" value={formVar.nom} onChange={e=>setFormVar(f=>({...f,nom:e.target.value}))} placeholder="ex: Restaurant, Billet avion..." onKeyDown={e=>e.key==="Enter"&&addVar()}/></Field>
+          <Field label="Catégorie"><select className="inp" value={formVar.cat} onChange={e=>setFormVar(f=>({...f,cat:e.target.value}))}>{BUDGET_CATS.map(c=><option key={c}>{c}</option>)}</select></Field>
+          <Field label="Montant (€)"><input className="inp" type="number" step="0.01" value={formVar.montant} onChange={e=>setFormVar(f=>({...f,montant:e.target.value}))} placeholder="0" style={{width:110}} onKeyDown={e=>e.key==="Enter"&&addVar()}/></Field>
+          <button className="bp" style={{height:38,alignSelf:"flex-end"}} onClick={addVar}>+ Ajouter</button>
+        </div>
+        {/* Liste variables */}
+        {vars.length>0&&<>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            {vars.map(v=><div key={v.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 10px",borderRadius:8,background:C.sand}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div className="dot" style={{width:8,height:8,background:BUDGET_CAT_COLOR[v.cat]||C.muted}}/>
+                <span style={{fontSize:13,color:C.navy}}>{v.nom}</span>
+                <span className="badge" style={{background:BUDGET_CAT_COLOR[v.cat]+"22",color:BUDGET_CAT_COLOR[v.cat]||C.muted,fontSize:10}}>{v.cat}</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <span style={{fontSize:13,fontWeight:700,color:C.orange}}>{fmt(v.montant)}</span>
+                <button className="bd" onClick={()=>delVar(v.id)}>✕</button>
+              </div>
+            </div>)}
+          </div>
+          <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end"}}>
+            <span style={{fontSize:13,fontWeight:700,color:C.orange}}>Total variables : {fmt(varsTotal)}</span>
+          </div>
+        </>}
+        {vars.length===0&&<div style={{fontSize:13,color:C.muted,textAlign:"center",padding:"8px 0"}}>Aucune dépense variable ce mois — parfait !</div>}
+      </div>
+
+      {/* Bilan mensuel */}
+      <div className="card" style={{background:`linear-gradient(135deg,${C.navy},${C.navyLight})`,border:"none"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:16}}>
+          {[["Revenus",revTotal,C.cyan],["Fixes",depFixed,C.blue],["Variables",varsTotal,C.orange],["Épargne réelle",epargneReelle,epargneReelle>=0?C.green:C.red],["Épargne théo.",epargneTheo,C.muted]].map(([l,v,col])=>(
+            <div key={l}><div style={{fontSize:10,color:"rgba(255,255,255,.5)",fontWeight:600,textTransform:"uppercase",letterSpacing:".08em",marginBottom:4}}>{l}</div><div className="sf" style={{fontSize:20,color:col}}>{fmt(v)}</div></div>
+          ))}
+        </div>
+      </div>
+    </>}
+
+    {/* ===== MODE PLAN ===== */}
+    {mode==="plan"&&<>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16}}>
+        <button className="bp" onClick={()=>{setFormLigne({cat:"Logement",...Object.fromEntries(data.profils.map(p=>[p.id,""]))});setEditLigne("add");}}>+ Ajouter une ligne</button>
+      </div>
+      {BUDGET_CATS.filter(cat=>lignes.some(l=>l.cat===cat)).map(cat=>{
+        const catLignes=lignes.filter(l=>l.cat===cat);
+        const catTotal=catLignes.reduce((s,l)=>s+data.profils.reduce((ss,p)=>ss+(l[p.id]||0),0),0);
+        return <div key={cat} style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:14,marginBottom:12,overflow:"hidden"}}>
+          <div style={{padding:"11px 18px",background:`${BUDGET_CAT_COLOR[cat]}10`,borderBottom:`1px solid ${BUDGET_CAT_COLOR[cat]}20`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{display:"flex",alignItems:"center",gap:9}}><div className="dot" style={{width:10,height:10,background:BUDGET_CAT_COLOR[cat]}}/><span style={{fontWeight:700,color:BUDGET_CAT_COLOR[cat]}}>{cat}</span></div>
+            <span style={{fontSize:13,fontWeight:700,color:C.navy}}>{fmt(catTotal)}/mois</span>
+          </div>
+          <table className="tbl"><thead><tr><th>Poste</th>{data.profils.map(p=><th key={p.id}>{p.nom}</th>)}<th>Total</th><th></th></tr></thead>
+          <tbody>{catLignes.map(l=>{const tot=data.profils.reduce((s,p)=>s+(l[p.id]||0),0);return(
+            <tr key={l.id}>
+              <td style={{fontWeight:500,color:C.navy}}>{l.nom}</td>
+              {data.profils.map(p=><td key={p.id} style={{color:l[p.id]>0?C.navy:C.muted}}>{l[p.id]>0?fmt(l[p.id]):"—"}</td>)}
+              <td style={{fontWeight:700,color:C.navy}}>{fmt(tot)}</td>
+              <td><div style={{display:"flex",gap:5}}><button className="bsm" onClick={()=>{setFormLigne({...l,...Object.fromEntries(data.profils.map(p=>[p.id,l[p.id]||""]))});setEditLigne("edit");}}>✏️</button><button className="bd" onClick={()=>delLigne(l.id)}>✕</button></div></td>
+            </tr>);
+          })}</tbody></table>
+        </div>;
+      })}
+      <div className="card" style={{background:`linear-gradient(135deg,${C.navy},${C.navyLight})`,border:"none"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:16}}>
+          {[["Total revenus",revTotal,C.cyan],["Total fixes",depFixed,C.blue],["Épargne théorique",epargneTheo,epargneTheo>=0?C.green:C.red],["Taux d'épargne",null,C.gold]].map(([l,v,col],i)=>(
+            <div key={l}><div style={{fontSize:10,color:"rgba(255,255,255,.5)",fontWeight:600,textTransform:"uppercase",letterSpacing:".08em",marginBottom:4}}>{l}</div>
+            <div className="sf" style={{fontSize:22,color:col}}>{i===3?(revTotal>0?(epargneTheo/revTotal*100).toFixed(1):0)+"%":fmt(v)}</div></div>
+          ))}
+        </div>
+      </div>
+    </>}
+
+    {/* ===== MODE ANALYSE ===== */}
+    {mode==="analyse"&&<>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+        <div className="card">
+          <div className="sf" style={{fontSize:17,color:C.navy,marginBottom:14}}>Répartition des charges fixes</div>
+          <ResponsiveContainer width="100%" height={190}>
+            <PieChart>
+              <Pie data={catStats.map(c=>({name:c.cat,value:c.v,color:BUDGET_CAT_COLOR[c.cat]||C.muted}))} cx="50%" cy="50%" innerRadius={48} outerRadius={78} dataKey="value" strokeWidth={2} stroke="white">
+                {catStats.map((c,i)=><Cell key={i} fill={BUDGET_CAT_COLOR[c.cat]||C.muted}/>)}
+              </Pie>
+              <Tooltip formatter={v=>fmt(v)} contentStyle={{borderRadius:10,fontFamily:"Outfit,sans-serif",fontSize:12}}/>
+            </PieChart>
+          </ResponsiveContainer>
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:6}}>
+            {catStats.map((c,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}><div className="dot" style={{background:BUDGET_CAT_COLOR[c.cat]||C.muted}}/><span style={{fontSize:12,color:C.muted}}>{c.cat}</span></div>
+              <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                <span style={{fontSize:11,color:C.muted}}>{revTotal>0?(c.v/revTotal*100).toFixed(0):0}%</span>
+                <span style={{fontSize:12,fontWeight:700,color:C.navy}}>{fmt(c.v)}</span>
+              </div>
+            </div>)}
+          </div>
+        </div>
+        <div className="card">
+          <div className="sf" style={{fontSize:17,color:C.navy,marginBottom:6}}>Taux d'épargne</div>
+          <div style={{fontSize:12,color:C.muted,marginBottom:16}}>Fixes seules · hors variables</div>
+          <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+            <div style={{flex:1,height:16,background:C.sandDark,borderRadius:8,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${revTotal>0?Math.max(0,epargneTheo/revTotal*100):0}%`,background:`linear-gradient(90deg,${C.cyan},${C.green})`,borderRadius:8}}/>
+            </div>
+            <div className="sf" style={{fontSize:26,color:C.green,minWidth:60}}>{revTotal>0?(epargneTheo/revTotal*100).toFixed(1):0}%</div>
+          </div>
+          <div style={{fontSize:13,color:C.muted,marginBottom:20}}>{fmt(epargneTheo)}/mois · {fmt(epargneTheo*12)}/an</div>
+          <div style={{fontSize:12,fontWeight:700,color:C.navy,marginBottom:8}}>Par profil</div>
+          {data.profils.map(p=>{const rev=revByP(p.id);const dep=depByP(p.id);const reste=rev-dep;const tx=rev>0?Math.max(0,reste/rev*100):0;return(
+            <div key={p.id} style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{fontSize:12,fontWeight:600,color:C.navy}}>{p.nom}</span>
+                <div style={{display:"flex",gap:10}}><span style={{fontSize:11,color:C.muted}}>{fmt(rev)}/mois</span><span style={{fontSize:11,fontWeight:700,color:reste>=0?C.green:C.red}}>Reste {fmt(reste)}</span></div>
+              </div>
+              <div style={{height:8,background:C.sandDark,borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,dep/rev*100)}%`,background:p.couleur,borderRadius:4}}/></div>
+            </div>);
+          })}
+        </div>
+      </div>
+
+      {/* Historique épargne réelle vs théorique + écart patrimonial */}
+      {histSeries.filter(r=>r.deltaPatri!==null).length>0&&<div className="card" style={{marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div>
+            <div className="sf" style={{fontSize:17,color:C.navy}}>Épargne théorique vs variation patrimoniale</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:2}}>L'écart = argent dépensé hors budget</div>
+          </div>
+        </div>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={histSeries.filter(r=>r.deltaPatri!==null)} barGap={4}>
+            <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false}/>
+            <XAxis dataKey="m" tick={{fontSize:10,fill:C.muted}} axisLine={false} tickLine={false}/>
+            <YAxis tick={{fontSize:10,fill:C.muted}} axisLine={false} tickLine={false} tickFormatter={v=>`${Math.round(v/100)/10}k`} width={36}/>
+            <Tooltip formatter={v=>fmt(v)} contentStyle={{borderRadius:10,fontFamily:"Outfit,sans-serif",fontSize:12}}/>
+            <Legend iconType="circle" iconSize={8} wrapperStyle={{fontSize:11}}/>
+            <ReferenceLine y={0} stroke={C.border}/>
+            <Bar dataKey="epTheo" name="Épargne théo." fill={C.bluePale} stroke={C.blue} strokeWidth={1.5} radius={[4,4,0,0]}/>
+            <Bar dataKey="deltaPatri" name="Δ Patrimoine réel" radius={[4,4,0,0]}>
+              {histSeries.filter(r=>r.deltaPatri!==null).map((r,i)=><Cell key={i} fill={r.deltaPatri>=0?C.green:C.red}/>)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:14}}>
+          {histSeries.filter(r=>r.ecart!==null).map((r,i)=>{
+            const nonBudg=-r.ecart;
+            return <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",borderRadius:9,background:nonBudg>500?C.redPale:nonBudg>0?C.sand:C.greenPale}}>
+              <span style={{fontSize:13,fontWeight:600,color:C.navy}}>{r.m}</span>
+              <div style={{display:"flex",gap:16,alignItems:"center"}}>
+                <span style={{fontSize:12,color:C.muted}}>Théo: {fmt(r.epTheo)}</span>
+                <span style={{fontSize:12,color:C.muted}}>Réel: {fmt(r.deltaPatri)}</span>
+                <span style={{fontSize:13,fontWeight:700,color:nonBudg>0?C.red:C.green}}>
+                  {nonBudg>0?"Hors budget: "+fmt(nonBudg):"Surplus: "+fmt(-nonBudg)}
+                </span>
+              </div>
+            </div>;
+          })}
+        </div>
+      </div>}
+
+      {/* Variables saisies */}
+      {months.some(m=>getVars(budget,m).length>0)&&<div className="card">
+        <div className="sf" style={{fontSize:17,color:C.navy,marginBottom:14}}>Historique des variables</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {[...months].reverse().filter(m=>getVars(budget,m).length>0).map(m=>(
+            <div key={m} style={{background:C.sand,borderRadius:10,padding:"10px 14px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
+                <span style={{fontSize:13,fontWeight:700,color:C.navy}}>{ML(m)}</span>
+                <span style={{fontSize:13,fontWeight:700,color:C.orange}}>{fmt(totalVars(budget,m))}</span>
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {getVars(budget,m).map(v=><span key={v.id} style={{fontSize:11,background:"white",borderRadius:6,padding:"3px 9px",color:C.navy,border:`1px solid ${C.border}`}}>{v.nom} · {fmt(v.montant)}</span>)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>}
+    </>}
+
+    {/* Modals */}
+    {editLigne&&<Modal title={editLigne==="add"?"Nouvelle charge fixe":"Modifier"} onClose={()=>setEditLigne(null)} width={460}>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <Field label="Poste"><input className="inp" value={formLigne.nom||""} onChange={e=>setFormLigne(f=>({...f,nom:e.target.value}))} autoFocus placeholder="ex: Loyer"/></Field>
+        <Field label="Catégorie"><select className="inp" value={formLigne.cat||"Logement"} onChange={e=>setFormLigne(f=>({...f,cat:e.target.value}))}>{BUDGET_CATS.map(c=><option key={c}>{c}</option>)}</select></Field>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
+          {data.profils.map(p=><Field key={p.id} label={`Part ${p.nom} (€/mois)`}><input className="inp" type="number" step="0.01" value={formLigne[p.id]||""} onChange={e=>setFormLigne(f=>({...f,[p.id]:e.target.value}))}/></Field>)}
+        </div>
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}><button className="bg" onClick={()=>setEditLigne(null)}>Annuler</button><button className="bp" onClick={saveLigne}>Enregistrer</button></div>
+      </div>
+    </Modal>}
+    {editRev&&<Modal title="Revenus" onClose={()=>setEditRev(null)} width={380}>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <Field label="Salaire net (€/mois)"><input className="inp" type="number" value={formRev.salaire||""} onChange={e=>setFormRev(f=>({...f,salaire:e.target.value}))} autoFocus/></Field>
+        <Field label="Autres revenus (€/mois)" hint="Loyers, dividendes, etc."><input className="inp" type="number" value={formRev.revenus_autres||""} onChange={e=>setFormRev(f=>({...f,revenus_autres:e.target.value}))}/></Field>
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}><button className="bg" onClick={()=>setEditRev(null)}>Annuler</button><button className="bp" onClick={saveRev}>OK</button></div>
+      </div>
+    </Modal>}
+  </div>;
+}
+
+// ===================== PARAMÉTRAGE =====================
 
 function ParametrageTab({data,setData}){
   const [selP,setSelP]=useState(null);
@@ -245,6 +966,8 @@ function ParametrageTab({data,setData}){
   </div>;
 }
 
+// ===================== DONNÉES =====================
+
 function DonneesTab({data,setData}){
   const months=Object.keys(data.entries).sort();
   const [mode,setMode]=useState("saisie");
@@ -273,9 +996,7 @@ function DonneesTab({data,setData}){
   return <div className="anim" style={{padding:"28px 32px",maxWidth:1040}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:12}}>
       <div><div className="sf" style={{fontSize:30,color:C.navy}}>Données</div><div style={{fontSize:14,color:C.muted,marginTop:4}}>{mode==="saisie"?"Saisie mensuelle":"Historique"}</div></div>
-      <div style={{display:"flex",background:C.sandDark,borderRadius:13,padding:4,gap:2}}>
-        {[["saisie","✏️ Saisie"],["historique","📊 Historique"]].map(([v,l])=><button key={v} onClick={()=>setMode(v)} style={{padding:"7px 16px",borderRadius:9,border:"none",cursor:"pointer",fontFamily:"Outfit,sans-serif",fontSize:13,fontWeight:600,background:mode===v?C.white:"transparent",color:mode===v?C.navy:C.muted,boxShadow:mode===v?"0 2px 8px rgba(0,0,0,.08)":"none"}}>{l}</button>)}
-      </div>
+      <div className="seg">{[["saisie","✏️ Saisie"],["historique","📊 Historique"]].map(([v,l])=><button key={v} className={`segtab${mode===v?" on":""}`} onClick={()=>setMode(v)}>{l}</button>)}</div>
     </div>
     {mode==="saisie"&&<>
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:14,flexWrap:"wrap"}}>
@@ -357,87 +1078,17 @@ function DonneesTab({data,setData}){
   </div>;
 }
 
-function GraphiqueTab({data,setTab}){
-  const [vue,setVue]=useState("collective");
-  const [selP,setSelP]=useState(null);
-  const months=Object.keys(data.entries).sort();
-  const lastM=months[months.length-1];
-  const series=useMemo(()=>evoSeries(data),[data]);
-  useEffect(()=>{if(data.profils.length>0&&!selP)setSelP(data.profils[0].id);},[data.profils]);
-  if(data.profils.length===0||months.length===0)return <div className="anim" style={{padding:"32px 36px"}}><Empty icon="📊" title="Pas encore de données" desc="Configure tes profils et saisis tes premiers soldes." action={<button className="bp" onClick={()=>setTab("parametrage")}>Aller au Paramétrage →</button>}/></div>;
-  const t=mtotals(data,lastM);const prevM=months[months.length-2];const tp=prevM?mtotals(data,prevM):null;
-  const pA=data.profils.find(p=>p.id===selP);
-  const csA=pA?data.comptes.filter(c=>c.profilId===selP):[];
-  const eL=data.entries[lastM]||{};const tL=data.taux?.[lastM]||{};
-  const totA=csA.reduce((s,c)=>s+eur(c,eL[c.id],tL),0);
-  const prevTotA=prevM?csA.reduce((s,c)=>s+eur(c,(data.entries[prevM]||{})[c.id],data.taux?.[prevM]||{}),0):null;
-  const initA=csA.reduce((s,c)=>s+eur(c,c.valInit,tL),0);
-  const perfA=initA>0?(totA-initA)/initA*100:0;
-  const byCatA={};csA.forEach(c=>{const v=eur(c,eL[c.id],tL);byCatA[c.cat]=(byCatA[c.cat]||0)+v;});
-  const repA=Object.entries(byCatA).filter(([,v])=>v>0).map(([cat,val])=>({name:cat,value:Math.round(val),color:CAT_COLOR[cat]||C.muted}));
-  const pSeries=series.map(r=>({m:r.m,total:r[selP]||0}));
-  return <div className="anim" style={{padding:"28px 32px",maxWidth:1160}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:22}}>
-      <div><div className="sf" style={{fontSize:30,color:C.navy}}>Graphiques</div><div style={{fontSize:14,color:C.muted,marginTop:4}}>{ML(lastM)} · {data.profils.map(p=>p.nom).join(" + ")}</div></div>
-      <div style={{display:"flex",background:C.sandDark,borderRadius:13,padding:4,gap:2}}>
-        {[["collective","🌐 Collective"],["individuelle","👤 Individuelle"]].map(([v,l])=><button key={v} onClick={()=>setVue(v)} style={{padding:"7px 16px",borderRadius:9,border:"none",cursor:"pointer",fontFamily:"Outfit,sans-serif",fontSize:13,fontWeight:600,background:vue===v?C.white:"transparent",color:vue===v?C.navy:C.muted,boxShadow:vue===v?"0 2px 8px rgba(0,0,0,.08)":"none"}}>{l}</button>)}
-      </div>
-    </div>
-    {vue==="collective"&&<>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12,marginBottom:18}}>
-        <KPI label="Patrimoine total" value={fmt(t.grandHC)} sub="vs mois préc." trend={tp?t.grandHC-tp.grandHC:undefined} color={C.blue} icon="🏦"/>
-        <KPI label="Crypto" value={fmt(t.crypto)} trend={tp?t.crypto-tp.crypto:undefined} color={C.yellow} icon="₿"/>
-        {data.profils.map(p=><KPI key={p.id} label={p.nom} value={fmt(t.byP[p.id]||0)} color={p.couleur} icon="👤"/>)}
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 240px",gap:14}}>
-        <div className="card"><div className="sf" style={{fontSize:17,color:C.navy,marginBottom:12}}>Évolution consolidée</div>
-          <ResponsiveContainer width="100%" height={195}><AreaChart data={series}><defs><linearGradient id="gT" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={C.blue} stopOpacity={.18}/><stop offset="95%" stopColor={C.blue} stopOpacity={0}/></linearGradient><linearGradient id="gC" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={C.yellow} stopOpacity={.22}/><stop offset="95%" stopColor={C.yellow} stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false}/><XAxis dataKey="m" tick={{fontSize:10,fill:C.muted}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:10,fill:C.muted}} axisLine={false} tickLine={false} tickFormatter={v=>`${Math.round(v/1000)}k`} width={34}/><Tooltip formatter={v=>fmt(v)} contentStyle={{borderRadius:10,border:`1px solid ${C.border}`,fontFamily:"Outfit,sans-serif",fontSize:12}}/><Area type="monotone" dataKey="total" stroke={C.blue} strokeWidth={2.5} fill="url(#gT)" name="Hors crypto"/><Area type="monotone" dataKey="crypto" stroke={C.yellow} strokeWidth={2} fill="url(#gC)" name="Crypto"/></AreaChart></ResponsiveContainer>
-        </div>
-        <div className="card" style={{display:"flex",flexDirection:"column"}}><div className="sf" style={{fontSize:17,color:C.navy,marginBottom:12}}>Répartition</div>
-          <ResponsiveContainer width="100%" height={115}><PieChart><Pie data={Object.entries(t.byCat).filter(([,v])=>v>0).map(([cat,val])=>({name:cat,value:Math.round(val),color:CAT_COLOR[cat]||C.muted}))} cx="50%" cy="50%" innerRadius={36} outerRadius={54} dataKey="value" strokeWidth={2} stroke="white">{Object.entries(t.byCat).filter(([,v])=>v>0).map(([cat],i)=><Cell key={i} fill={CAT_COLOR[cat]||C.muted}/>)}</Pie><Tooltip formatter={v=>fmt(v)} contentStyle={{borderRadius:10,fontFamily:"Outfit,sans-serif",fontSize:11}}/></PieChart></ResponsiveContainer>
-          <div style={{display:"flex",flexDirection:"column",gap:5}}>{Object.entries(t.byCat).filter(([,v])=>v>0).map(([cat,val],i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}><div style={{display:"flex",alignItems:"center",gap:6}}><div className="dot" style={{background:CAT_COLOR[cat]||C.muted}}/><span style={{fontSize:11,color:C.muted}}>{cat}</span></div><span style={{fontSize:11,fontWeight:600,color:C.navy}}>{fmt(val)}</span></div>)}</div>
-        </div>
-      </div>
-    </>}
-    {vue==="individuelle"&&<>
-      <div style={{marginBottom:18}}><div style={{fontSize:11,color:C.muted,fontWeight:600,marginBottom:9,textTransform:"uppercase",letterSpacing:".05em"}}>Sélectionner une personne</div>
-        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>{data.profils.map(p=><button key={p.id} className="ptab" onClick={()=>setSelP(p.id)} style={{borderColor:selP===p.id?p.couleur:C.border,background:selP===p.id?p.couleur:"white",color:selP===p.id?"white":C.muted,boxShadow:selP===p.id?`0 4px 14px ${p.couleur}40`:"none",fontSize:14,padding:"11px 26px"}}>{p.nom}</button>)}</div>
-      </div>
-      {pA&&<>
-        <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
-          <div style={{width:44,height:44,borderRadius:"50%",background:pA.couleur,display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontWeight:700,fontSize:15}}>{pA.nom.substring(0,2).toUpperCase()}</div>
-          <div><div className="sf" style={{fontSize:21,color:C.navy}}>{pA.nom}</div><div style={{fontSize:13,color:C.muted}}>{csA.length} comptes · {ML(lastM)}</div></div>
-          <div className="sf" style={{marginLeft:"auto",fontSize:24,color:C.navy}}>{fmt(totA)}</div>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12,marginBottom:16}}>
-          <KPI label="Patrimoine" value={fmt(totA)} sub="vs mois préc." trend={prevTotA!==null?totA-prevTotA:undefined} color={pA.couleur} icon="🏦"/>
-          <KPI label="Performance" value={fmtP(perfA)} sub={`sur ${fmt(initA)}`} trend={totA-initA} color={perfA>=0?C.green:C.red} icon="📈"/>
-          <KPI label="Crypto" value={fmt(csA.filter(c=>c.cat==="Crypto").reduce((s,c)=>s+eur(c,eL[c.id],tL),0))} color={C.yellow} icon="₿"/>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 240px",gap:14}}>
-          <div className="card"><div className="sf" style={{fontSize:17,color:C.navy,marginBottom:12}}>Évolution de {pA.nom}</div>
-            <ResponsiveContainer width="100%" height={175}><AreaChart data={pSeries}><defs><linearGradient id="gP" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={pA.couleur} stopOpacity={.2}/><stop offset="95%" stopColor={pA.couleur} stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false}/><XAxis dataKey="m" tick={{fontSize:10,fill:C.muted}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:10,fill:C.muted}} axisLine={false} tickLine={false} tickFormatter={v=>`${Math.round(v/1000)}k`} width={34}/><Tooltip formatter={v=>fmt(v)} contentStyle={{borderRadius:10,border:`1px solid ${C.border}`,fontFamily:"Outfit,sans-serif",fontSize:12}}/><Area type="monotone" dataKey="total" stroke={pA.couleur} strokeWidth={2.5} fill="url(#gP)" name={pA.nom}/></AreaChart></ResponsiveContainer>
-          </div>
-          <div className="card" style={{display:"flex",flexDirection:"column"}}><div className="sf" style={{fontSize:17,color:C.navy,marginBottom:12}}>Répartition</div>
-            <ResponsiveContainer width="100%" height={110}><PieChart><Pie data={repA} cx="50%" cy="50%" innerRadius={33} outerRadius={50} dataKey="value" strokeWidth={2} stroke="white">{repA.map((e,i)=><Cell key={i} fill={e.color}/>)}</Pie><Tooltip formatter={v=>fmt(v)} contentStyle={{borderRadius:10,fontFamily:"Outfit,sans-serif",fontSize:11}}/></PieChart></ResponsiveContainer>
-            <div style={{display:"flex",flexDirection:"column",gap:5}}>{repA.map((d,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}><div style={{display:"flex",alignItems:"center",gap:6}}><div className="dot" style={{background:d.color}}/><span style={{fontSize:11,color:C.muted}}>{d.name}</span></div><span style={{fontSize:11,fontWeight:600,color:C.navy}}>{fmt(d.value)}</span></div>)}</div>
-          </div>
-        </div>
-      </>}
-    </>}
-  </div>;
-}
-
 export default function App(){
   const [data,setData]=useState(null);
   const [tab,setTab]=useState("parametrage");
   return <div style={{display:"flex",minHeight:"100vh",background:C.sand}}>
     <style>{G}</style>
-    {!data&&<Onboarding onStart={()=>{setData(EMPTY);setTab("parametrage");}} onImport={d=>{setData(d);setTab("graphique");}}/>}
+    {!data&&<Onboarding onStart={()=>{setData(EMPTY);setTab("parametrage");}} onImport={d=>{setData(d);setTab("dashboard");}}/>}
     {data&&<>
       <Sidebar tab={tab} setTab={setTab} data={data} setData={setData}/>
       <main style={{flex:1,overflowY:"auto",minHeight:"100vh"}}>
-        {tab==="graphique"&&<GraphiqueTab data={data} setTab={setTab}/>}
+        {tab==="dashboard"&&<DashboardTab data={data} setTab={setTab}/>}
+        {tab==="budget"&&<BudgetTab data={data} setData={setData}/>}
         {tab==="donnees"&&<DonneesTab data={data} setData={setData}/>}
         {tab==="parametrage"&&<ParametrageTab data={data} setData={setData}/>}
       </main>
